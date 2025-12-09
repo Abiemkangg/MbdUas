@@ -116,21 +116,27 @@ BEGIN
     RETURN tersedia;
 END//
 
--- 6. Function: Validasi Login Kasir/Admin
+-- 6. Function: Validasi Login Kasir/Admin (dengan MD5 hash)
 DROP FUNCTION IF EXISTS ValidasiLogin//
 CREATE FUNCTION ValidasiLogin(p_username VARCHAR(50), p_password VARCHAR(100))
-RETURNS VARCHAR(20)
+RETURNS BOOLEAN
 DETERMINISTIC
 READS SQL DATA
 BEGIN
-    DECLARE akses VARCHAR(20);
+    DECLARE valid BOOLEAN;
     
-    SELECT level_akses INTO akses
-    FROM Kasir
-    WHERE username = p_username
-    AND password = p_password;
+    IF EXISTS (
+        SELECT 1 FROM Kasir
+        WHERE username = p_username
+        AND password = MD5(p_password)
+        AND level_akses IN ('admin', 'kasir')
+    ) THEN
+        SET valid = TRUE;
+    ELSE
+        SET valid = FALSE;
+    END IF;
     
-    RETURN COALESCE(akses, 'Invalid');
+    RETURN valid;
 END//
 
 -- 7. Function: Cek Status Film Aktif
@@ -153,6 +159,116 @@ BEGIN
     END IF;
     
     RETURN aktif;
+END//
+
+-- 8. Function: Hitung Total Penjualan Kasir (untuk bonus/evaluasi)
+DROP FUNCTION IF EXISTS HitungPenjualanKasir//
+CREATE FUNCTION HitungPenjualanKasir(p_kasir_id INT, p_tanggal_mulai DATE, p_tanggal_akhir DATE)
+RETURNS DECIMAL(15,2)
+DETERMINISTIC
+READS SQL DATA
+BEGIN
+    DECLARE total DECIMAL(15,2);
+    
+    SELECT COALESCE(SUM(t.harga), 0) INTO total
+    FROM Tiket t
+    WHERE t.kasir_id = p_kasir_id
+    AND DATE(t.tanggal_pembelian) BETWEEN p_tanggal_mulai AND p_tanggal_akhir
+    AND t.status_tiket = 'Aktif';
+    
+    RETURN total;
+END//
+
+-- 9. Function: Cek Jadwal Sudah Lewat
+DROP FUNCTION IF EXISTS CekJadwalLewat//
+CREATE FUNCTION CekJadwalLewat(p_jadwal_id INT)
+RETURNS BOOLEAN
+DETERMINISTIC
+READS SQL DATA
+BEGIN
+    DECLARE lewat BOOLEAN;
+    
+    IF EXISTS (
+        SELECT 1 FROM Jadwal
+        WHERE jadwal_id = p_jadwal_id
+        AND CONCAT(tanggal, ' ', waktu_selesai) < NOW()
+    ) THEN
+        SET lewat = TRUE;
+    ELSE
+        SET lewat = FALSE;
+    END IF;
+    
+    RETURN lewat;
+END//
+
+-- 10. Function: Hitung Persentase Occupancy Studio
+DROP FUNCTION IF EXISTS HitungOccupancyStudio//
+CREATE FUNCTION HitungOccupancyStudio(p_studio_id INT, p_tanggal DATE)
+RETURNS DECIMAL(5,2)
+DETERMINISTIC
+READS SQL DATA
+BEGIN
+    DECLARE occupancy DECIMAL(5,2);
+    DECLARE total_kursi INT;
+    DECLARE total_terjual INT;
+    
+    -- Hitung total kapasitas studio untuk tanggal tersebut
+    SELECT SUM(s.kapasitas) INTO total_kursi
+    FROM Jadwal j
+    JOIN Studio s ON j.studio_id = s.studio_id
+    WHERE j.studio_id = p_studio_id
+    AND j.tanggal = p_tanggal;
+    
+    -- Hitung total tiket terjual
+    SELECT COUNT(t.tiket_id) INTO total_terjual
+    FROM Jadwal j
+    JOIN Tiket t ON j.jadwal_id = t.jadwal_id
+    WHERE j.studio_id = p_studio_id
+    AND j.tanggal = p_tanggal
+    AND t.status_tiket = 'Aktif';
+    
+    IF total_kursi > 0 THEN
+        SET occupancy = (total_terjual / total_kursi) * 100;
+    ELSE
+        SET occupancy = 0;
+    END IF;
+    
+    RETURN ROUND(occupancy, 2);
+END//
+
+-- 11. Function: Generate Reference Number untuk Payment Gateway
+DROP FUNCTION IF EXISTS GenerateReferenceNumber//
+CREATE FUNCTION GenerateReferenceNumber()
+RETURNS VARCHAR(100)
+DETERMINISTIC
+BEGIN
+    DECLARE ref_num VARCHAR(100);
+    DECLARE timestamp_str VARCHAR(20);
+    DECLARE random_num INT;
+    
+    SET timestamp_str = DATE_FORMAT(NOW(), '%Y%m%d%H%i%s');
+    SET random_num = FLOOR(1000 + RAND() * 9000);
+    SET ref_num = CONCAT('REF', timestamp_str, random_num);
+    
+    RETURN ref_num;
+END//
+
+-- 12. Function: Validasi Nomor Kursi Format (A1-Z99)
+DROP FUNCTION IF EXISTS ValidasiFormatKursi//
+CREATE FUNCTION ValidasiFormatKursi(p_nomor_kursi VARCHAR(10))
+RETURNS BOOLEAN
+DETERMINISTIC
+BEGIN
+    DECLARE valid BOOLEAN;
+    
+    -- Format: Huruf (A-Z) + Angka (1-99)
+    IF p_nomor_kursi REGEXP '^[A-Z][0-9]{1,2}$' THEN
+        SET valid = TRUE;
+    ELSE
+        SET valid = FALSE;
+    END IF;
+    
+    RETURN valid;
 END//
 
 DELIMITER ;

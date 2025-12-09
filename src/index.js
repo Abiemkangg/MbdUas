@@ -180,8 +180,8 @@ app.listen(PORT, async () => {
     console.log('✅ Database connected successfully');
     connection.release();
     
-    console.log(`🚀 Server berjalan di http://localhost:${PORT}`);
-    console.log('📚 Dokumentasi API:');
+    console.log(`Server berjalan di http://localhost:${PORT}`);
+    console.log('Dokumentasi API:');
     console.log('   - Auth:       http://localhost:' + PORT + '/api/auth/login');
     console.log('   - Films:      http://localhost:' + PORT + '/api/films');
     console.log('   - Jadwal:     http://localhost:' + PORT + '/api/jadwal');
@@ -189,7 +189,7 @@ app.listen(PORT, async () => {
     console.log('   - Pembayaran: http://localhost:' + PORT + '/api/pembayaran');
     console.log('   - Dashboard:  http://localhost:' + PORT + '/api/dashboard/admin');
   } catch (error) {
-    console.error('❌ Database connection failed:', error.message);
+    console.error('Database connection failed:', error.message);
     process.exit(1);
   }
 });
